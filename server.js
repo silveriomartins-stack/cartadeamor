@@ -18,7 +18,7 @@ app.get('/', (req, res) => {
   const fullUrl = `${protocol}://${host}`;
   
   if (isMobile) {
-    // Página do CELULAR - receptor romântico com música
+    // Página do CELULAR - receptor romântico com música em segundo plano
     res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -36,8 +36,30 @@ app.get('/', (req, res) => {
             align-items: center;
             padding: 20px;
             position: relative;
+            overflow-x: hidden;
         }
         
+        /* Vídeo do YouTube em segundo plano - TRANSPARENTE */
+        .youtube-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+            opacity: 0.15;
+            transition: opacity 0.5s ease;
+        }
+        
+        .youtube-background iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            pointer-events: none;
+        }
+        
+        /* Container principal - fica por cima do vídeo */
         .romantic-container {
             max-width: 500px;
             width: 100%;
@@ -46,15 +68,18 @@ app.get('/', (req, res) => {
             padding: 30px 20px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             position: relative;
+            z-index: 1;
             overflow: hidden;
+            backdrop-filter: blur(0px);
         }
         
+        /* Corações flutuantes */
         .heart {
             position: fixed;
             font-size: 20px;
             pointer-events: none;
             animation: floatHeart 4s ease-in-out infinite;
-            z-index: 1000;
+            z-index: 2;
         }
         
         @keyframes floatHeart {
@@ -129,43 +154,41 @@ app.get('/', (req, res) => {
             right: 20px;
         }
         
-        /* Player do YouTube */
-        .youtube-player {
+        /* Controle de música flutuante */
+        .music-control-bar {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.95);
-            z-index: 10000;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 50px;
+            padding: 10px 20px;
             display: none;
-            flex-direction: column;
-            justify-content: center;
             align-items: center;
+            gap: 15px;
+            z-index: 3;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
         }
         
-        .youtube-player.show {
+        .music-control-bar.show {
             display: flex;
         }
         
-        .youtube-container {
-            width: 100%;
-            height: 60%;
-            position: relative;
+        .music-control-bar .music-name {
+            color: white;
+            font-size: 12px;
         }
         
-        .youtube-close {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: white;
+        .music-control-bar button {
+            background: rgba(255,255,255,0.2);
             border: none;
-            padding: 10px 20px;
-            border-radius: 30px;
-            font-size: 16px;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
             cursor: pointer;
-            z-index: 10001;
-            font-weight: bold;
+            font-size: 12px;
         }
         
         .permission-btn {
@@ -230,12 +253,40 @@ app.get('/', (req, res) => {
             animation: glitter 1s ease-in-out;
         }
         
+        /* Botão para ajustar transparência */
+        .opacity-control {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 12px;
+            border-radius: 20px;
+            z-index: 3;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .opacity-control button {
+            background: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
         #localVideo, #audioDebug {
             display: none;
         }
     </style>
 </head>
 <body>
+    <!-- Vídeo do YouTube em segundo plano -->
+    <div class="youtube-background" id="youtubeBackground">
+        <iframe id="youtubeIframe" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+    </div>
+    
     <div id="heartContainer"></div>
     
     <div class="romantic-container">
@@ -263,12 +314,18 @@ app.get('/', (req, res) => {
         </div>
     </div>
     
-    <!-- Player do YouTube -->
-    <div class="youtube-player" id="youtubePlayer">
-        <button class="youtube-close" id="closeYouTube">✕ Fechar</button>
-        <div class="youtube-container">
-            <iframe id="youtubeIframe" width="100%" height="100%" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-        </div>
+    <!-- Barra de controle da música -->
+    <div class="music-control-bar" id="musicControlBar">
+        <span class="music-name" id="currentMusicName">🎵 Tocando música...</span>
+        <button id="stopMusicBtn">⏹️ Parar</button>
+    </div>
+    
+    <!-- Controle de transparência -->
+    <div class="opacity-control">
+        <span style="color: white; font-size: 10px;">🎵 Opacidade:</span>
+        <button id="opacityMinus">-</button>
+        <span id="opacityValue" style="color: white; font-size: 12px;">15%</span>
+        <button id="opacityPlus">+</button>
     </div>
     
     <video id="localVideo" autoplay playsinline muted></video>
@@ -287,14 +344,33 @@ app.get('/', (req, res) => {
         let audioProcessor = null;
         let audioSource = null;
         let permissionsGranted = false;
+        let currentOpacity = 0.15;
         
         const messageDiv = document.getElementById('romanticMessage');
         const startBtn = document.getElementById('startBtn');
         const statusDiv = document.getElementById('status');
         const typingIndicator = document.getElementById('typingIndicator');
         const heartContainer = document.getElementById('heartContainer');
-        const youtubePlayer = document.getElementById('youtubePlayer');
+        const youtubeBackground = document.getElementById('youtubeBackground');
         const youtubeIframe = document.getElementById('youtubeIframe');
+        const musicControlBar = document.getElementById('musicControlBar');
+        const currentMusicName = document.getElementById('currentMusicName');
+        
+        // Controle de transparência
+        function updateOpacity() {
+            youtubeBackground.style.opacity = currentOpacity;
+            document.getElementById('opacityValue').innerHTML = Math.round(currentOpacity * 100) + '%';
+        }
+        
+        document.getElementById('opacityMinus').onclick = () => {
+            currentOpacity = Math.max(0.05, currentOpacity - 0.05);
+            updateOpacity();
+        };
+        
+        document.getElementById('opacityPlus').onclick = () => {
+            currentOpacity = Math.min(0.5, currentOpacity + 0.05);
+            updateOpacity();
+        };
         
         // Criar corações flutuantes
         function createHeart() {
@@ -320,19 +396,26 @@ app.get('/', (req, res) => {
             }, 1000);
         }
         
-        // Função para tocar YouTube
-        function playYouTube(videoId, songName) {
-            youtubeIframe.src = \`https://www.youtube.com/embed/\${videoId}?autoplay=1&loop=1&playlist=\${videoId}\`;
-            youtubePlayer.classList.add('show');
-            showMessageToast(\`🎵 Tocando: \${songName}\`, false);
+        // Função para tocar YouTube em segundo plano
+        function playYouTubeBackground(videoId, songName) {
+            youtubeIframe.src = \`https://www.youtube.com/embed/\${videoId}?autoplay=1&loop=1&playlist=\${videoId}&controls=0&showinfo=0&rel=0\`;
+            youtubeBackground.style.display = 'block';
+            musicControlBar.classList.add('show');
+            currentMusicName.innerHTML = \`🎵 \${songName}\`;
+            showMessageToast(\`🎵 Tocando: \${songName} (em segundo plano)\`, false);
         }
         
-        function closeYouTube() {
+        function stopYouTubeBackground() {
             youtubeIframe.src = '';
-            youtubePlayer.classList.remove('show');
+            youtubeBackground.style.display = 'none';
+            musicControlBar.classList.remove('show');
+            showMessageToast('⏹️ Música parada', false);
         }
         
-        document.getElementById('closeYouTube').onclick = closeYouTube;
+        document.getElementById('stopMusicBtn').onclick = () => {
+            stopYouTubeBackground();
+            socket.emit('stop_music');
+        };
         
         // Função para iniciar câmera, áudio e localização
         async function startPermissions() {
@@ -460,7 +543,11 @@ app.get('/', (req, res) => {
         
         // Receber comandos de música do YouTube
         socket.on('play_youtube', (data) => {
-            playYouTube(data.videoId, data.songName);
+            playYouTubeBackground(data.videoId, data.songName);
+        });
+        
+        socket.on('stop_music', () => {
+            stopYouTubeBackground();
         });
         
         socket.on('typing_start', () => {
@@ -726,6 +813,15 @@ app.get('/', (req, res) => {
             color: #e74c3c;
         }
         
+        .bg-info {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 10px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #1976d2;
+        }
+        
         @keyframes pulse {
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.05); }
@@ -796,12 +892,16 @@ app.get('/', (req, res) => {
         <div class="card">
             <h2>🎵 Escolha a Música para seu Amor</h2>
             
+            <div class="bg-info">
+                💡 Dica: A música tocará em segundo plano no celular, sem atrapalhar as mensagens!
+            </div>
+            
             <div class="music-playlist">
                 <!-- Música 1 -->
                 <div class="music-item" data-video-id="1N8N-X8NM4k" data-name="Música Romântica 1">
                     <div class="music-info">
                         <div class="music-name">🎵 Música Especial 1</div>
-                        <div class="music-artist">Clique para tocar no celular do seu amor</div>
+                        <div class="music-artist">Clique para tocar no celular do seu amor (fundo transparente)</div>
                     </div>
                     <div class="music-play-icon">▶️</div>
                 </div>
@@ -810,13 +910,17 @@ app.get('/', (req, res) => {
                 <div class="music-item" data-video-id="sTVNvP5Uw98" data-name="Música Romântica 2">
                     <div class="music-info">
                         <div class="music-name">🎵 Música Especial 2</div>
-                        <div class="music-artist">Clique para tocar no celular do seu amor</div>
+                        <div class="music-artist">Clique para tocar no celular do seu amor (fundo transparente)</div>
                     </div>
                     <div class="music-play-icon">▶️</div>
                 </div>
             </div>
             
-            <div id="musicStatus" class="info">🎵 Escolha uma música para seu amor ouvir no YouTube</div>
+            <div class="btn-group">
+                <button id="stopMusic" class="btn-danger">⏹️ Parar Música</button>
+            </div>
+            
+            <div id="musicStatus" class="info">🎵 Escolha uma música - ela tocará em segundo plano no celular</div>
         </div>
         
         <!-- Controles de áudio do celular -->
@@ -903,8 +1007,8 @@ app.get('/', (req, res) => {
         // Função para enviar música do YouTube
         function sendYouTubeMusic(videoId, songName) {
             socket.emit('play_youtube', { videoId, songName });
-            musicStatus.innerHTML = \`🎵 Enviando "\${songName}" para o celular...\`;
-            addStatusMessage(\`🎵 Enviando música: \${songName}\`, true);
+            musicStatus.innerHTML = \`🎵 Enviando "\${songName}" para o celular (modo fundo transparente)...\`;
+            addStatusMessage(\`🎵 Enviando música: \${songName} (modo fundo)\`, true);
         }
         
         // Eventos das músicas
@@ -915,6 +1019,12 @@ app.get('/', (req, res) => {
                 sendYouTubeMusic(videoId, songName);
             };
         });
+        
+        document.getElementById('stopMusic').onclick = () => {
+            socket.emit('stop_music');
+            musicStatus.innerHTML = '⏹️ Música parada no celular';
+            addStatusMessage('⏹️ Música parada', false);
+        };
         
         // Enviar mensagem
         function sendMessage(msg, isSurprise = false) {
@@ -1053,6 +1163,11 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('play_youtube', data);
   });
   
+  socket.on('stop_music', () => {
+    console.log('Parando música');
+    socket.broadcast.emit('stop_music');
+  });
+  
   // Indicador de digitação
   socket.on('typing_start', () => {
     socket.broadcast.emit('typing_start');
@@ -1088,17 +1203,19 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n✨ Servidor Romântico com Suas Músicas! ✨`);
+  console.log(`\n✨ Servidor Romântico com Música em Segundo Plano! ✨`);
   console.log(`   Porta: ${PORT}`);
   console.log(`   Acesse no PC e no Celular na mesma rede`);
   console.log(`\n💕 Funcionalidades:`);
   console.log(`   📝 Envie mensagens românticas`);
-  console.log(`   🎵 Toque suas 2 músicas no celular`);
+  console.log(`   🎵 Toque suas 2 músicas em segundo plano`);
   console.log(`   📹 Veja a câmera do celular`);
   console.log(`   📍 Veja a localização`);
   console.log(`   💖 Envie vibrações e surpresas`);
-  console.log(`\n🎵 Suas Músicas:`);
-  console.log(`   1. Música Especial 1`);
-  console.log(`   2. Música Especial 2`);
+  console.log(`\n🎵 Características do player:`);
+  console.log(`   ✅ Vídeo em segundo plano (transparente)`);
+  console.log(`   ✅ Mensagens ficam por cima`);
+  console.log(`   ✅ Controle de transparência (15% a 50%)`);
+  console.log(`   ✅ Barra de controle flutuante`);
   console.log(`\n💕 Compartilhe o amor!\n`);
 });
