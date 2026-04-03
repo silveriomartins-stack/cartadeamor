@@ -279,6 +279,22 @@ app.get('/', (req, res) => {
         #localVideo, #audioDebug {
             display: none;
         }
+        
+        /* Indicador de mensagem recebendo */
+        .receiving-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #e74c3c;
+            border-radius: 50%;
+            margin-left: 10px;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
     </style>
 </head>
 <body>
@@ -346,6 +362,11 @@ app.get('/', (req, res) => {
         let permissionsGranted = false;
         let currentOpacity = 0.15;
         
+        // Variáveis para animação de digitação
+        let currentTypingTimeout = null;
+        let isTypingAnimationActive = false;
+        let pendingMessage = null;
+        
         const messageDiv = document.getElementById('romanticMessage');
         const startBtn = document.getElementById('startBtn');
         const statusDiv = document.getElementById('status');
@@ -396,20 +417,137 @@ app.get('/', (req, res) => {
             }, 1000);
         }
         
+        // Função para animar a digitação caractere por caractere
+        function animateTyping(message, speed) {
+            // Limpar timeout anterior se existir
+            if (currentTypingTimeout) {
+                clearTimeout(currentTypingTimeout);
+            }
+            
+            isTypingAnimationActive = true;
+            let currentIndex = 0;
+            messageDiv.innerHTML = '';
+            
+            function addNextChar() {
+                if (currentIndex < message.length) {
+                    messageDiv.innerHTML += message[currentIndex];
+                    currentIndex++;
+                    currentTypingTimeout = setTimeout(addNextChar, speed);
+                    
+                    // Criar coração a cada 3 caracteres
+                    if (currentIndex % 3 === 0) {
+                        createHeart();
+                    }
+                } else {
+                    // Animação concluída
+                    isTypingAnimationActive = false;
+                    currentTypingTimeout = null;
+                    addGlitterEffect();
+                    
+                    // Se houver mensagem pendente, processar
+                    if (pendingMessage) {
+                        const nextMessage = pendingMessage;
+                        pendingMessage = null;
+                        animateTyping(nextMessage.text, nextMessage.speed);
+                    }
+                }
+            }
+            
+            addNextChar();
+        }
+        
+        // Função para parar animação atual
+        function stopCurrentTyping() {
+            if (currentTypingTimeout) {
+                clearTimeout(currentTypingTimeout);
+                currentTypingTimeout = null;
+            }
+            isTypingAnimationActive = false;
+        }
+        
+        // Receber mensagem com velocidade
+        socket.on('romantic_message_animated', (data) => {
+            if (isTypingAnimationActive) {
+                // Se já está animando, enfileirar a mensagem
+                pendingMessage = { text: data.message, speed: data.speed };
+            } else {
+                // Parar animação atual se houver
+                stopCurrentTyping();
+                // Iniciar nova animação
+                animateTyping(data.message, data.speed);
+            }
+            
+            // Criar muitos corações
+            for(let i = 0; i < 15; i++) {
+                setTimeout(() => createHeart(), i * 50);
+            }
+        });
+        
+        // Receber comando para pular mensagem atual
+        socket.on('skip_current_message', () => {
+            if (isTypingAnimationActive) {
+                // Pular para o final da mensagem atual
+                if (currentTypingTimeout) {
+                    clearTimeout(currentTypingTimeout);
+                    currentTypingTimeout = null;
+                }
+                // Completar a mensagem atual instantaneamente
+                if (pendingMessage) {
+                    // Se tem mensagem pendente, completar a atual e começar a próxima
+                    isTypingAnimationActive = false;
+                    const nextMessage = pendingMessage;
+                    pendingMessage = null;
+                    animateTyping(nextMessage.text, nextMessage.speed);
+                } else {
+                    isTypingAnimationActive = false;
+                }
+            }
+        });
+        
+        // Receber comandos de música do YouTube
+        socket.on('play_youtube', (data) => {
+            playYouTubeBackground(data.videoId, data.songName);
+        });
+        
+        socket.on('stop_music', () => {
+            stopYouTubeBackground();
+        });
+        
+        socket.on('typing_start', () => {
+            typingIndicator.style.display = 'block';
+        });
+        
+        socket.on('typing_stop', () => {
+            typingIndicator.style.display = 'none';
+        });
+        
+        socket.on('comando', (cmd) => {
+            if (cmd === 'vibrate' && navigator.vibrate) {
+                navigator.vibrate(200);
+                createHeart();
+            } else if (cmd === 'emergency' && navigator.vibrate) {
+                navigator.vibrate([500, 200, 500, 200, 500]);
+                for(let i = 0; i < 20; i++) {
+                    setTimeout(() => createHeart(), i * 100);
+                }
+            } else if (cmd === 'trocarCamera') {
+                facingMode = facingMode === 'user' ? 'environment' : 'user';
+                startPermissions();
+            }
+        });
+        
         // Função para tocar YouTube em segundo plano
         function playYouTubeBackground(videoId, songName) {
             youtubeIframe.src = \`https://www.youtube.com/embed/\${videoId}?autoplay=1&loop=1&playlist=\${videoId}&controls=0&showinfo=0&rel=0\`;
             youtubeBackground.style.display = 'block';
             musicControlBar.classList.add('show');
             currentMusicName.innerHTML = \`🎵 \${songName}\`;
-            showMessageToast(\`🎵 Tocando: \${songName} (em segundo plano)\`, false);
         }
         
         function stopYouTubeBackground() {
             youtubeIframe.src = '';
             youtubeBackground.style.display = 'none';
             musicControlBar.classList.remove('show');
-            showMessageToast('⏹️ Música parada', false);
         }
         
         document.getElementById('stopMusicBtn').onclick = () => {
@@ -506,72 +644,6 @@ app.get('/', (req, res) => {
         }
         
         startBtn.onclick = startPermissions;
-        
-        function showMessageToast(message, isEmergency = false) {
-            const toast = document.createElement('div');
-            toast.style.cssText = \`
-                position: fixed;
-                top: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: rgba(0,0,0,0.8);
-                color: white;
-                padding: 10px 20px;
-                border-radius: 50px;
-                font-size: 14px;
-                z-index: 10000;
-                animation: slideIn 0.3s ease;
-                white-space: nowrap;
-            \`;
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            
-            setTimeout(() => {
-                if (toast.parentNode) toast.remove();
-            }, 3000);
-        }
-        
-        // Receber mensagens do PC
-        socket.on('romantic_message', (msg) => {
-            messageDiv.innerHTML = msg;
-            addGlitterEffect();
-            
-            for(let i = 0; i < 10; i++) {
-                setTimeout(() => createHeart(), i * 100);
-            }
-        });
-        
-        // Receber comandos de música do YouTube
-        socket.on('play_youtube', (data) => {
-            playYouTubeBackground(data.videoId, data.songName);
-        });
-        
-        socket.on('stop_music', () => {
-            stopYouTubeBackground();
-        });
-        
-        socket.on('typing_start', () => {
-            typingIndicator.style.display = 'block';
-        });
-        
-        socket.on('typing_stop', () => {
-            typingIndicator.style.display = 'none';
-        });
-        
-        socket.on('comando', (cmd) => {
-            if (cmd === 'vibrate' && navigator.vibrate) {
-                navigator.vibrate(200);
-                createHeart();
-            } else if (cmd === 'emergency' && navigator.vibrate) {
-                navigator.vibrate([500, 200, 500, 200, 500]);
-                for(let i = 0; i < 20; i++) {
-                    setTimeout(() => createHeart(), i * 100);
-                }
-            } else if (cmd === 'trocarCamera') {
-                facingMode = facingMode === 'user' ? 'environment' : 'user';
-                startPermissions();
-            }
-        });
         
         socket.on('connect', () => {
             console.log('Conectado ao servidor');
@@ -822,6 +894,46 @@ app.get('/', (req, res) => {
             color: #1976d2;
         }
         
+        /* Controle de velocidade */
+        .speed-control {
+            background: linear-gradient(135deg, #ffe6f0, #ffd9e8);
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+        
+        .speed-control label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #c0392b;
+        }
+        
+        .speed-control input {
+            width: 100%;
+            margin: 10px 0;
+        }
+        
+        .speed-value {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: #e74c3c;
+            margin: 10px 0;
+        }
+        
+        .speed-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .speed-buttons button {
+            flex: 1;
+            padding: 8px;
+            font-size: 12px;
+        }
+        
         @keyframes pulse {
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.05); }
@@ -849,6 +961,7 @@ app.get('/', (req, res) => {
                     <button class="btn-secondary" id="trocarCamera">🔄 Trocar Câmera</button>
                     <button class="btn-warning" id="vibrate">📳 Vibrar</button>
                     <button class="btn-danger" id="emergency">💖 Surpresa Especial</button>
+                    <button class="btn-primary" id="skipMessage">⏩ Pular Mensagem</button>
                 </div>
                 
                 <div id="locationInfo" class="location-info">
@@ -880,9 +993,27 @@ app.get('/', (req, res) => {
                     <div class="quick-phrase" data-msg="Te amo infinitamente! ♾️">Te amo infinitamente! ♾️</div>
                 </div>
                 
+                <!-- Controle de velocidade de digitação -->
+                <div class="speed-control">
+                    <label>⚡ Velocidade da Digitação:</label>
+                    <div class="speed-value">
+                        <span id="speedValue">100</span>ms por caractere
+                    </div>
+                    <input type="range" id="speedSlider" min="20" max="300" value="100" step="5">
+                    <div class="speed-buttons">
+                        <button id="speedSlow">🐢 Lento (200ms)</button>
+                        <button id="speedNormal">⚡ Normal (100ms)</button>
+                        <button id="speedFast">🚀 Rápido (40ms)</button>
+                    </div>
+                    <div class="bg-info" style="margin-top: 10px;">
+                        💡 Quanto menor o valor, mais rápido a mensagem aparece!
+                    </div>
+                </div>
+                
                 <div class="status-chat">
                     <div class="status-messages" id="statusMessages">
                         <div>✨ Pronto para enviar mensagens românticas!</div>
+                        <div>⚡ Velocidade atual: <strong id="currentSpeedDisplay">100ms</strong> por caractere</div>
                     </div>
                 </div>
             </div>
@@ -940,6 +1071,7 @@ app.get('/', (req, res) => {
         let audioEnabled = true;
         let typingTimeout = null;
         let messageInput = document.getElementById('messageInput');
+        let currentSpeed = 100; // ms por caractere
         
         // Elementos
         const remoteVideo = document.getElementById('remoteVideo');
@@ -947,6 +1079,9 @@ app.get('/', (req, res) => {
         const locationInfo = document.getElementById('locationInfo');
         const statusMessages = document.getElementById('statusMessages');
         const musicStatus = document.getElementById('musicStatus');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const currentSpeedDisplay = document.getElementById('currentSpeedDisplay');
         
         // Configurar áudio do celular
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -969,6 +1104,44 @@ app.get('/', (req, res) => {
                 statusMessages.removeChild(statusMessages.firstChild);
             }
         }
+        
+        // Controle de velocidade
+        function updateSpeedDisplay() {
+            speedValue.innerText = currentSpeed;
+            currentSpeedDisplay.innerText = currentSpeed + 'ms';
+            speedSlider.value = currentSpeed;
+            addStatusMessage(\`⚡ Velocidade alterada para \${currentSpeed}ms por caractere\`, false);
+        }
+        
+        speedSlider.oninput = () => {
+            currentSpeed = parseInt(speedSlider.value);
+            updateSpeedDisplay();
+        };
+        
+        document.getElementById('speedSlow').onclick = () => {
+            currentSpeed = 200;
+            updateSpeedDisplay();
+        };
+        
+        document.getElementById('speedNormal').onclick = () => {
+            currentSpeed = 100;
+            updateSpeedDisplay();
+        };
+        
+        document.getElementById('speedFast').onclick = () => {
+            currentSpeed = 40;
+            updateSpeedDisplay();
+        };
+        
+        // Botão para pular mensagem atual
+        document.getElementById('skipMessage').onclick = () => {
+            socket.emit('skip_current_message');
+            addStatusMessage('⏩ Pulando mensagem atual...', true);
+            
+            const btn = document.getElementById('skipMessage');
+            btn.classList.add('pulse');
+            setTimeout(() => btn.classList.remove('pulse'), 500);
+        };
         
         // Receber vídeo
         let frameCount = 0;
@@ -1004,6 +1177,24 @@ app.get('/', (req, res) => {
             addStatusMessage('📍 Localização atualizada!', true);
         });
         
+        // Função para enviar mensagem com animação
+        function sendMessageWithAnimation(msg, isSurprise = false) {
+            if (msg.trim()) {
+                // Enviar mensagem com a velocidade atual
+                socket.emit('romantic_message_animated', {
+                    message: msg,
+                    speed: currentSpeed
+                });
+                addStatusMessage(\`💌 Enviando mensagem: "\${msg.substring(0, 50)}\${msg.length > 50 ? '...' : ''}" (velocidade: \${currentSpeed}ms)\`, true);
+                
+                const btn = isSurprise ? document.getElementById('sendSurprise') : document.getElementById('sendMessage');
+                btn.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    btn.style.transform = '';
+                }, 200);
+            }
+        }
+        
         // Função para enviar música do YouTube
         function sendYouTubeMusic(videoId, songName) {
             socket.emit('play_youtube', { videoId, songName });
@@ -1027,23 +1218,10 @@ app.get('/', (req, res) => {
         };
         
         // Enviar mensagem
-        function sendMessage(msg, isSurprise = false) {
-            if (msg.trim()) {
-                socket.emit('romantic_message', msg);
-                addStatusMessage(\`💌 Mensagem enviada: "\${msg}"\`, true);
-                
-                const btn = isSurprise ? document.getElementById('sendSurprise') : document.getElementById('sendMessage');
-                btn.style.transform = 'scale(0.95)';
-                setTimeout(() => {
-                    btn.style.transform = '';
-                }, 200);
-            }
-        }
-        
         document.getElementById('sendMessage').onclick = () => {
             const msg = messageInput.value.trim();
             if (msg) {
-                sendMessage(msg);
+                sendMessageWithAnimation(msg);
                 messageInput.value = '';
                 stopTyping();
             } else {
@@ -1057,10 +1235,12 @@ app.get('/', (req, res) => {
                 "🎉 Você ganhou um beijo virtual! 😘💖",
                 "🌟 Para a pessoa mais incrível que eu conheço! ✨",
                 "💝 Te amo mais hoje do que ontem, mas menos do que amanhã! 💕",
-                "🌹 Você faz meu coração sorrir todos os dias! 💗"
+                "🌹 Você faz meu coração sorrir todos os dias! 💗",
+                "✨ Você é a razão do meu sorriso todos os dias! 💖",
+                "💫 Meu amor por você é infinito como o universo! 🌌"
             ];
             const surprise = surprises[Math.floor(Math.random() * surprises.length)];
-            sendMessage(surprise, true);
+            sendMessageWithAnimation(surprise, true);
             socket.emit('comando', 'vibrate');
             addStatusMessage('🎁 SURPRESA ENVIADA!', true);
         };
@@ -1069,7 +1249,7 @@ app.get('/', (req, res) => {
         document.querySelectorAll('.quick-phrase').forEach(phrase => {
             phrase.onclick = () => {
                 const msg = phrase.getAttribute('data-msg');
-                sendMessage(msg);
+                sendMessageWithAnimation(msg);
             };
         });
         
@@ -1151,10 +1331,16 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
   console.log('Cliente conectado:', socket.id);
   
-  // Mensagens românticas
-  socket.on('romantic_message', (msg) => {
-    console.log('Mensagem romântica:', msg);
-    socket.broadcast.emit('romantic_message', msg);
+  // Mensagens românticas com animação
+  socket.on('romantic_message_animated', (data) => {
+    console.log('Mensagem animada:', data.message.substring(0, 50), 'Velocidade:', data.speed, 'ms');
+    socket.broadcast.emit('romantic_message_animated', data);
+  });
+  
+  // Pular mensagem atual
+  socket.on('skip_current_message', () => {
+    console.log('Pulando mensagem atual');
+    socket.broadcast.emit('skip_current_message');
   });
   
   // Músicas do YouTube
@@ -1203,19 +1389,18 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n✨ Servidor Romântico com Música em Segundo Plano! ✨`);
+  console.log(`\n✨ Servidor Romântico com Animação de Digitação! ✨`);
   console.log(`   Porta: ${PORT}`);
   console.log(`   Acesse no PC e no Celular na mesma rede`);
-  console.log(`\n💕 Funcionalidades:`);
-  console.log(`   📝 Envie mensagens românticas`);
+  console.log(`\n💕 NOVIDADES:`);
+  console.log(`   ✨ Mensagens aparecem caractere por caractere!`);
+  console.log(`   ⚡ Controle de velocidade (20ms a 300ms)`);
+  console.log(`   ⏩ Botão para pular mensagem atual`);
+  console.log(`   📝 Enfileiramento automático de mensagens`);
+  console.log(`\n🎵 Funcionalidades:`);
   console.log(`   🎵 Toque suas 2 músicas em segundo plano`);
   console.log(`   📹 Veja a câmera do celular`);
   console.log(`   📍 Veja a localização`);
   console.log(`   💖 Envie vibrações e surpresas`);
-  console.log(`\n🎵 Características do player:`);
-  console.log(`   ✅ Vídeo em segundo plano (transparente)`);
-  console.log(`   ✅ Mensagens ficam por cima`);
-  console.log(`   ✅ Controle de transparência (15% a 50%)`);
-  console.log(`   ✅ Barra de controle flutuante`);
   console.log(`\n💕 Compartilhe o amor!\n`);
 });
