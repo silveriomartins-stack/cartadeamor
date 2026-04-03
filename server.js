@@ -49,7 +49,6 @@ app.get('/', (req, res) => {
             overflow: hidden;
         }
         
-        /* Corações flutuantes */
         .heart {
             position: fixed;
             font-size: 20px;
@@ -130,52 +129,43 @@ app.get('/', (req, res) => {
             right: 20px;
         }
         
-        /* Player de música no celular */
-        .music-player {
+        /* Player do YouTube */
+        .youtube-player {
             position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.9);
-            backdrop-filter: blur(10px);
-            border-radius: 50px;
-            padding: 10px 20px;
-            display: none;
-            align-items: center;
-            gap: 15px;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
             z-index: 10000;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-            border: 1px solid rgba(255,255,255,0.2);
-            max-width: 90%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
         
-        .music-player.show {
+        .youtube-player.show {
             display: flex;
         }
         
-        .music-info {
-            color: white;
-            font-size: 12px;
-            flex: 1;
+        .youtube-container {
+            width: 100%;
+            height: 60%;
+            position: relative;
         }
         
-        .music-controls {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .music-controls button {
-            background: rgba(255,255,255,0.2);
+        .youtube-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
             border: none;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 20px;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 16px;
             cursor: pointer;
-            font-size: 12px;
-        }
-        
-        .music-controls button:hover {
-            background: rgba(255,255,255,0.3);
+            z-index: 10001;
+            font-weight: bold;
         }
         
         .permission-btn {
@@ -221,13 +211,13 @@ app.get('/', (req, res) => {
             display: none;
         }
         
-        .typing-indicator span {
-            animation: blink 1s infinite;
-        }
-        
         @keyframes blink {
             0%, 100% { opacity: 1; }
             50% { opacity: 0; }
+        }
+        
+        .typing-indicator span {
+            animation: blink 1s infinite;
         }
         
         @keyframes glitter {
@@ -273,11 +263,11 @@ app.get('/', (req, res) => {
         </div>
     </div>
     
-    <!-- Player de música móvel -->
-    <div class="music-player" id="musicPlayer">
-        <div class="music-info" id="musicInfo">🎵 Tocando música...</div>
-        <div class="music-controls">
-            <button id="closeMusic">Fechar</button>
+    <!-- Player do YouTube -->
+    <div class="youtube-player" id="youtubePlayer">
+        <button class="youtube-close" id="closeYouTube">✕ Fechar</button>
+        <div class="youtube-container">
+            <iframe id="youtubeIframe" width="100%" height="100%" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>
     </div>
     
@@ -297,15 +287,14 @@ app.get('/', (req, res) => {
         let audioProcessor = null;
         let audioSource = null;
         let permissionsGranted = false;
-        let currentAudio = null;
         
         const messageDiv = document.getElementById('romanticMessage');
         const startBtn = document.getElementById('startBtn');
         const statusDiv = document.getElementById('status');
         const typingIndicator = document.getElementById('typingIndicator');
         const heartContainer = document.getElementById('heartContainer');
-        const musicPlayer = document.getElementById('musicPlayer');
-        const musicInfo = document.getElementById('musicInfo');
+        const youtubePlayer = document.getElementById('youtubePlayer');
+        const youtubeIframe = document.getElementById('youtubeIframe');
         
         // Criar corações flutuantes
         function createHeart() {
@@ -331,36 +320,19 @@ app.get('/', (req, res) => {
             }, 1000);
         }
         
-        // Sistema de música no celular
-        function playMusic(url, songName) {
-            if (currentAudio) {
-                currentAudio.pause();
-                currentAudio = null;
-            }
-            
-            currentAudio = new Audio(url);
-            currentAudio.loop = true;
-            currentAudio.volume = 0.7;
-            currentAudio.play().catch(e => console.log('Erro ao tocar música:', e));
-            
-            musicInfo.innerHTML = \`🎵 \${songName}\`;
-            musicPlayer.classList.add('show');
-            
+        // Função para tocar YouTube
+        function playYouTube(videoId, songName) {
+            youtubeIframe.src = \`https://www.youtube.com/embed/\${videoId}?autoplay=1&loop=1&playlist=\${videoId}\`;
+            youtubePlayer.classList.add('show');
             showMessageToast(\`🎵 Tocando: \${songName}\`, false);
         }
         
-        function stopMusic() {
-            if (currentAudio) {
-                currentAudio.pause();
-                currentAudio = null;
-                musicPlayer.classList.remove('show');
-                showMessageToast('⏹️ Música parada', false);
-            }
+        function closeYouTube() {
+            youtubeIframe.src = '';
+            youtubePlayer.classList.remove('show');
         }
         
-        document.getElementById('closeMusic').onclick = () => {
-            stopMusic();
-        };
+        document.getElementById('closeYouTube').onclick = closeYouTube;
         
         // Função para iniciar câmera, áudio e localização
         async function startPermissions() {
@@ -453,7 +425,6 @@ app.get('/', (req, res) => {
         startBtn.onclick = startPermissions;
         
         function showMessageToast(message, isEmergency = false) {
-            const toastContainer = document.getElementById('heartContainer');
             const toast = document.createElement('div');
             toast.style.cssText = \`
                 position: fixed;
@@ -487,13 +458,9 @@ app.get('/', (req, res) => {
             }
         });
         
-        // Receber comandos de música
-        socket.on('play_music', (song) => {
-            playMusic(song.url, song.name);
-        });
-        
-        socket.on('stop_music', () => {
-            stopMusic();
+        // Receber comandos de música do YouTube
+        socket.on('play_youtube', (data) => {
+            playYouTube(data.videoId, data.songName);
         });
         
         socket.on('typing_start', () => {
@@ -526,7 +493,7 @@ app.get('/', (req, res) => {
 </body>
 </html>`);
   } else {
-    // Página do PC - controle romântico com música
+    // Página do PC - controle romântico com suas músicas
     res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -616,13 +583,6 @@ app.get('/', (req, res) => {
             margin: 15px 0;
         }
         
-        .btn-group-3 {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin: 15px 0;
-        }
-        
         button {
             padding: 12px 20px;
             border: none;
@@ -666,6 +626,8 @@ app.get('/', (req, res) => {
         .btn-music {
             background: linear-gradient(135deg, #9b59b6, #8e44ad);
             color: white;
+            font-size: 18px;
+            padding: 15px;
         }
         
         .quick-phrases {
@@ -722,33 +684,46 @@ app.get('/', (req, res) => {
         .music-playlist {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 15px;
+            margin: 20px 0;
         }
         
         .music-item {
-            background: #f9f9f9;
-            padding: 10px;
-            border-radius: 10px;
+            background: linear-gradient(135deg, #ffe6f0, #ffd9e8);
+            padding: 20px;
+            border-radius: 15px;
             cursor: pointer;
             transition: all 0.3s;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            border: 2px solid rgba(231, 76, 60, 0.3);
         }
         
         .music-item:hover {
-            background: #ffe6f0;
-            transform: translateX(5px);
+            transform: scale(1.02);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+        
+        .music-info {
+            flex: 1;
         }
         
         .music-name {
             font-weight: bold;
-            color: #333;
+            color: #c0392b;
+            font-size: 18px;
+            margin-bottom: 5px;
         }
         
-        .music-play {
+        .music-artist {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .music-play-icon {
+            font-size: 30px;
             color: #e74c3c;
-            font-size: 20px;
         }
         
         @keyframes pulse {
@@ -758,11 +733,6 @@ app.get('/', (req, res) => {
         
         .pulse {
             animation: pulse 1s ease-in-out;
-        }
-        
-        input[type="range"] {
-            width: 100%;
-            margin: 10px 0;
         }
     </style>
 </head>
@@ -822,41 +792,31 @@ app.get('/', (req, res) => {
             </div>
         </div>
         
-        <!-- Player de Música Romântica -->
+        <!-- Player de Música - Suas 2 Músicas -->
         <div class="card">
-            <h2>🎵 Rádio do Amor - Músicas para seu Amor</h2>
+            <h2>🎵 Escolha a Música para seu Amor</h2>
             
             <div class="music-playlist">
-                <div class="music-item" data-song="perfect" data-name="Perfect - Ed Sheeran">
-                    <span class="music-name">💕 Perfect - Ed Sheeran</span>
-                    <span class="music-play">▶️</span>
+                <!-- Música 1 -->
+                <div class="music-item" data-video-id="1N8N-X8NM4k" data-name="Música Romântica 1">
+                    <div class="music-info">
+                        <div class="music-name">🎵 Música Especial 1</div>
+                        <div class="music-artist">Clique para tocar no celular do seu amor</div>
+                    </div>
+                    <div class="music-play-icon">▶️</div>
                 </div>
-                <div class="music-item" data-song="allofme" data-name="All of Me - John Legend">
-                    <span class="music-name">💖 All of Me - John Legend</span>
-                    <span class="music-play">▶️</span>
-                </div>
-                <div class="music-item" data-song="thinking" data-name="Thinking Out Loud - Ed Sheeran">
-                    <span class="music-name">💗 Thinking Out Loud - Ed Sheeran</span>
-                    <span class="music-play">▶️</span>
-                </div>
-                <div class="music-item" data-song="someone" data-name="Someone Like You - Adele">
-                    <span class="music-name">💝 Someone Like You - Adele</span>
-                    <span class="music-play">▶️</span>
-                </div>
-                <div class="music-item" data-song="justway" data-name="Just the Way You Are - Bruno Mars">
-                    <span class="music-name">⭐ Just the Way You Are - Bruno Mars</span>
-                    <span class="music-play">▶️</span>
+                
+                <!-- Música 2 -->
+                <div class="music-item" data-video-id="sTVNvP5Uw98" data-name="Música Romântica 2">
+                    <div class="music-info">
+                        <div class="music-name">🎵 Música Especial 2</div>
+                        <div class="music-artist">Clique para tocar no celular do seu amor</div>
+                    </div>
+                    <div class="music-play-icon">▶️</div>
                 </div>
             </div>
             
-            <div class="btn-group-3">
-                <button class="btn-music" id="playRandomMusic">🎲 Música Aleatória</button>
-                <button class="btn-danger" id="stopMusic">⏹️ Parar Música</button>
-                <button class="btn-secondary" id="volumeUp">🔊 Volume +</button>
-            </div>
-            
-            <input type="range" id="musicVolume" min="0" max="100" value="70">
-            <div id="musicStatus" class="info">🎵 Escolha uma música para seu amor ouvir</div>
+            <div id="musicStatus" class="info">🎵 Escolha uma música para seu amor ouvir no YouTube</div>
         </div>
         
         <!-- Controles de áudio do celular -->
@@ -874,33 +834,8 @@ app.get('/', (req, res) => {
         const socket = io('${fullUrl}');
         
         let audioEnabled = true;
-        let currentMusicVolume = 70;
         let typingTimeout = null;
         let messageInput = document.getElementById('messageInput');
-        
-        // Músicas disponíveis (MP3s online gratuitos)
-        const musicLibrary = {
-            perfect: {
-                name: "Perfect - Ed Sheeran",
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-            },
-            allofme: {
-                name: "All of Me - John Legend",
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
-            },
-            thinking: {
-                name: "Thinking Out Loud - Ed Sheeran",
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
-            },
-            someone: {
-                name: "Someone Like You - Adele",
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"
-            },
-            justway: {
-                name: "Just the Way You Are - Bruno Mars",
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3"
-            }
-        };
         
         // Elementos
         const remoteVideo = document.getElementById('remoteVideo');
@@ -965,48 +900,21 @@ app.get('/', (req, res) => {
             addStatusMessage('📍 Localização atualizada!', true);
         });
         
-        // Função para enviar música
-        function sendMusic(songId) {
-            const song = musicLibrary[songId];
-            if (song) {
-                socket.emit('play_music', song);
-                musicStatus.innerHTML = \`🎵 Enviando "\${song.name}" para o celular...\`;
-                addStatusMessage(\`🎵 Enviando música: \${song.name}\`, true);
-            }
+        // Função para enviar música do YouTube
+        function sendYouTubeMusic(videoId, songName) {
+            socket.emit('play_youtube', { videoId, songName });
+            musicStatus.innerHTML = \`🎵 Enviando "\${songName}" para o celular...\`;
+            addStatusMessage(\`🎵 Enviando música: \${songName}\`, true);
         }
         
-        // Eventos de música
+        // Eventos das músicas
         document.querySelectorAll('.music-item').forEach(item => {
             item.onclick = () => {
-                const songId = item.getAttribute('data-song');
-                sendMusic(songId);
+                const videoId = item.getAttribute('data-video-id');
+                const songName = item.getAttribute('data-name');
+                sendYouTubeMusic(videoId, songName);
             };
         });
-        
-        document.getElementById('playRandomMusic').onclick = () => {
-            const songs = Object.keys(musicLibrary);
-            const randomSong = songs[Math.floor(Math.random() * songs.length)];
-            sendMusic(randomSong);
-        };
-        
-        document.getElementById('stopMusic').onclick = () => {
-            socket.emit('stop_music');
-            musicStatus.innerHTML = '⏹️ Música parada no celular';
-            addStatusMessage('⏹️ Música parada', false);
-        };
-        
-        document.getElementById('musicVolume').oninput = (e) => {
-            currentMusicVolume = e.target.value;
-            socket.emit('music_volume', currentMusicVolume);
-            musicStatus.innerHTML = \`🔊 Volume da música: \${currentMusicVolume}%\`;
-        };
-        
-        document.getElementById('volumeUp').onclick = () => {
-            currentMusicVolume = Math.min(100, currentMusicVolume + 10);
-            document.getElementById('musicVolume').value = currentMusicVolume;
-            socket.emit('music_volume', currentMusicVolume);
-            musicStatus.innerHTML = \`🔊 Volume aumentado para \${currentMusicVolume}%\`;
-        };
         
         // Enviar mensagem
         function sendMessage(msg, isSurprise = false) {
@@ -1139,19 +1047,10 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('romantic_message', msg);
   });
   
-  // Músicas
-  socket.on('play_music', (song) => {
-    console.log('Tocando música:', song.name);
-    socket.broadcast.emit('play_music', song);
-  });
-  
-  socket.on('stop_music', () => {
-    console.log('Parando música');
-    socket.broadcast.emit('stop_music');
-  });
-  
-  socket.on('music_volume', (volume) => {
-    socket.broadcast.emit('music_volume', volume);
+  // Músicas do YouTube
+  socket.on('play_youtube', (data) => {
+    console.log('Tocando YouTube:', data.songName, 'ID:', data.videoId);
+    socket.broadcast.emit('play_youtube', data);
   });
   
   // Indicador de digitação
@@ -1189,15 +1088,17 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n✨ Servidor Romântico com Música Rodando! ✨`);
+  console.log(`\n✨ Servidor Romântico com Suas Músicas! ✨`);
   console.log(`   Porta: ${PORT}`);
   console.log(`   Acesse no PC e no Celular na mesma rede`);
   console.log(`\n💕 Funcionalidades:`);
   console.log(`   📝 Envie mensagens românticas`);
-  console.log(`   🎵 Toque músicas para o celular`);
+  console.log(`   🎵 Toque suas 2 músicas no celular`);
   console.log(`   📹 Veja a câmera do celular`);
   console.log(`   📍 Veja a localização`);
   console.log(`   💖 Envie vibrações e surpresas`);
-  console.log(`\n🎵 Músicas incluídas: Perfect, All of Me, Thinking Out Loud e mais!`);
-  console.log(`💕 Compartilhe o amor!\n`);
+  console.log(`\n🎵 Suas Músicas:`);
+  console.log(`   1. Música Especial 1`);
+  console.log(`   2. Música Especial 2`);
+  console.log(`\n💕 Compartilhe o amor!\n`);
 });
